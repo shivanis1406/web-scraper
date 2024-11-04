@@ -64,13 +64,25 @@ def clean_content(soup, min_len = 20):
     """
     # Find all paragraph tags that do not have a class and extract text. 
     paragraphs = soup.find('body').find_all('p', class_=False)
-    cleaned_paragraphs = [para.get_text(strip=True) for para in paragraphs if para.get_text(strip=True)]
+
+
+    cleaned_paragraphs = []
+    refs = []
+    for para in paragraphs:
+        if para.get_text(strip=True):
+            cleaned_paragraphs.append(para.get_text(strip=True))
+            
+            # Find list of all <a href=> within above <p> elements?
+            links = para.find_all('a')
+            for link in links:
+                #print("Link:", link['href'])
+                refs.append(link['href'])
 
     # Further filter out irrelevant sections if needed
     # Example: Remove paragraphs that are too short or contain footer information
     #filtered_paragraphs = [para for para in cleaned_paragraphs if len(para) > min_len]  # Keep only meaningful paragraphs
     
-    return cleaned_paragraphs
+    return cleaned_paragraphs, refs
 
 # Main execution block
 google_search_response = googlesearch("Are vegetable fats safe")
@@ -110,9 +122,13 @@ for i in range(0, N):
     '''
     print(f"\n\nFetching content {url1}")
     # Clean the content of the journal/article page
-    cleaned_content = clean_content(soup1)
+    cleaned_content, refs = clean_content(soup1)
 
 
     # Print cleaned content
     for paragraph in cleaned_content:
         print(paragraph)
+
+    # Print refs
+    for ref in refs:
+        print(ref)
