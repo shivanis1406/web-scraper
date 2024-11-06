@@ -1,9 +1,15 @@
-import scrapy
+import scrapy, os, re
+
+os.system("rm -rf articles output.json")
 
 class HealthlineSpider(scrapy.Spider):
     name = "healthline"
     allowed_domains = ["www.healthline.com"]
     start_urls = ["https://www.healthline.com/sitemap.xml"]
+
+    def __init__(self, *args, **kwargs):
+        super(HealthlineSpider, self).__init__(*args, **kwargs)
+        self.article_count = 1  # Initialize counter for unique filenames
 
     def parse(self, response):
         self.logger.info(f"Visited: {response.url}")
@@ -62,6 +68,11 @@ class HealthlineSpider(scrapy.Spider):
                 text_content = element.css('::text').getall()
                 text = ' '.join(text_content).strip()
                 
+
+                # Check if element is <h2> and add extra newline
+                if element.root.tag == 'h2':
+                    text = f"\n{text}"  # Extra newline before <h2> text
+
                 # Extract all <a> tags and their href attributes
                 links = element.css('a::attr(href)').getall()
                 
@@ -72,25 +83,64 @@ class HealthlineSpider(scrapy.Spider):
                 #})
 
                 text_data.append(text)
-                if ",".join(links) != "":
-                    refs.append(",".join(links))
+                link_str_list = []
+
+                for link in links:
+                    if link.strip() == "":
+                        continue
+                    if "www." not in link:
+                        link_str_list.append("https://www.healthline.com" + link.strip())
+                    else:
+                        link_str_list.append(link.strip())
+
+                refs.append("\n".join(link_str_list))
             
             text_data_str = "\n".join(text_data)
-            self.logger.info(f"Text: {text_data_str}")
+            ref_str = "\n".join(refs)
+            # Replace multiple consecutive newlines with a single newline
+            ref_str_cleaned = re.sub(r'\n+', '\n', ref_str)
 
-            return "\n".join(text_data), "\n".join(refs)
+            #self.logger.info(f"Text: {text_data_str}")
+
+            #\\n allows json.loads to operate on this
+            return text_data_str, ref_str_cleaned
 
         # Combine <p> and <li> elements text and links
         #text_data = extract_text_and_links(paragraphs) + extract_text_and_links(list_items)
         text_data, refs = extract_text_and_links(text_elements)
 
         if title and text_data:
-            yield {
+            item =  {
                 'url': response.url,
                 'title': title,
                 'content': text_data,
                 'refs': refs
             }
+
+            yield item
+
+            # Write item to a file
+            self.write_to_file(item)
+
+    def write_to_file(self, item):
+        # Format file content
+        file_content = f"Title: {item['title']}\n\n{item['content']}\n\nReferences:\n{item['refs']}"
+
+        # Use article count to ensure unique filename
+        filename = f"article{self.article_count}.txt"
+
+        # Define output directory
+        output_dir = "articles"
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Write to file
+        with open(os.path.join(output_dir, filename), 'w', encoding='utf-8') as file:
+            file.write(file_content)
+
+        self.logger.info(f"Saved article to {filename}")
+
+        # Increment counter for the next file
+        self.article_count += 1
 
 
 #Get score threshold : https://community.openai.com/t/setting-score-threshold-parameter-for-file-search-tool/1005231
